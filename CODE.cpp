@@ -5,6 +5,34 @@
 #include <fstream>
 #include <deque>
 using namespace std;
+// 2)
+void bootSequeuce()
+{
+// Just removing everything else from the screen
+#ifdef _WIN32
+    system("cls");
+#else
+    system("clear");
+#endif
+
+    cout << "  _   _                  Rl___  \n";
+    cout << " | \\ | | __ _ _ __   ___|  ___| ___\n";
+    cout << " |  \\| |/ _` | '_ \\ / _ \\ |_ / __|\n";
+    cout << " | |\\  | (_| | | | | (_) |  _\\__ \\\n";
+    cout << " |_| \\_|\\__,_|_| |_|\\___/|_| |___/\n\n";
+
+    cout << " Booting NanoFS Kernel v1.0...\n";
+    cout << " [";
+    // 3. The Animated Loading Bar
+    for (int i = 0; i < 20; i++)
+    {
+        cout << "#" << std::flush;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    cout << "] 100%\n";
+    cout << " Welcome to NanoFS. Type 'help' to begin.\n\n";
+}
 
 class FileNode{
 public:
@@ -408,6 +436,65 @@ public:
                 cout << "Command not recognized.\n";
             }
         }
+    }
+     // 1)
+    void shred(string filename)
+    {
+        if (currentDir->children.find(filename) != currentDir->children.end())
+        { // if file is there
+            FileNode *target = currentDir->children[filename];
+            if (!target->isDirectory)
+            {
+
+                target->content.assign(target->content.length(), '#'); // Replaces data with "#"
+
+                cout << "Memory Shredded successfully for: " << filename << endl;
+
+                delete target;
+                currentDir->children.erase(filename); // removal from unordered map
+            }
+            else
+            {
+                cout << "Cannot shred a directory . Use rm instead.\n";
+            }
+        }
+        else
+        {
+            cout << "Error: File not found!!" << endl;
+        }
+    }
+
+    void findHelper(FileNode* currentNode , string targetName , string currentPath){
+
+        if(currentNode->name == targetName){
+            cout << "Found: " << currentPath << endl;
+        }
+
+        for(auto const& i : currentNode->children)
+        {
+            FileNode* childNode = i.second;
+            string nextPath;
+            if(currentPath == "/"){
+                nextPath = currentPath + childNode->name;
+            }
+            else{
+                nextPath = currentPath + "/" + childNode->name;
+            }
+
+            if(childNode->isDirectory){
+                findHelper(childNode , targetName , nextPath);
+            }
+            else if(childNode->name == targetName){
+                cout << "Found: " << nextPath << endl;
+            }
+        }
+    }
+    // find Command 3)
+    void find(string targetName){
+        cout << "Searching Entire System For: " << targetName << "\n";
+
+        findHelper(root,targetName,"/");
+        cout << "Search Complete." << endl;
     }
 
 };
