@@ -11,6 +11,7 @@
 #ifdef _WIN32
 #include <conio.h>
 #else
+#include <cstdio>
 #include <termios.h>
 #include <unistd.h>
 #endif
@@ -319,6 +320,11 @@ private:
             {
                 cout << '\n';
                 return input;
+            }
+            else if (ch == 3)
+            {
+                cout << "^C\n";
+                return "exit";
             }
             else if (ch == 8 || ch == 127)
             {
@@ -768,13 +774,13 @@ public:
         return parts;
     }
 
-    void load()
+    bool load()
     {
         ifstream inFile("data.txt");
         if (!inFile.is_open())
         {
             cout << "Could not open the file\n";
-            return;
+            return false;
         }
         delete root;
         root = new FileNode("/", true);
@@ -819,6 +825,7 @@ public:
             }
         }
         currentDir = root;
+        return true;
     }
 
     void treeHelper(FileNode *node, int depth)
@@ -1163,42 +1170,18 @@ public:
 
     void suggest(const string &prefix)
     {
-        TrieNode *tRoot = new TrieNode();
-
-        vector<string> commands = {
-            "mkdir", "touch", "ls", "cd", "pwd", "rm", "trash", "restore",
-            "write", "empty", "cat", "save", "load", "tree", "history",
-            "clear", "grep", "nanofetch", "shred", "find", "du",
-            "cp", "mv", "suggest", "exit", "props", "theme"};
-
-        for (const string &cmd : commands)
-            trieInsert(tRoot, cmd);
-
-        indexTreeIntoTrie(root, "/", tRoot);
-
-        TrieNode *curr = tRoot;
-        for (char c : prefix)
+        vector<string> matches = autoCompleteMatches(prefix);
+        if (matches.empty())
         {
-            unsigned char idx = static_cast<unsigned char>(c);
-            if (idx >= 128 || curr->children[idx] == nullptr)
-            {
-                cout << "No suggestions matching '" << prefix << "'\n";
-                delete tRoot;
-                return;
-            }
-            curr = curr->children[idx];
+            cout << "No suggestions matching '" << prefix << "'\n";
+            return;
         }
-
-        vector<string> matches;
-        trieCollectWords(curr, prefix, matches);
 
         cout << currentTheme.accentColor << "Suggestions for '" << prefix << "':" << currentTheme.reset << "\n";
         for (const string &m : matches)
         {
             cout << "  -> " << currentTheme.fileColor << m << currentTheme.reset << "\n";
         }
-
-        delete tRoot;
     }
 
     // 1)
@@ -1466,8 +1449,10 @@ public:
             }
             if (input == "load")
             {
-                load();
-                cout << "Loaded Successfully\n";
+                if (load())
+                {
+                    cout << "Loaded Successfully\n";
+                }
                 continue;
             }
 
@@ -1482,7 +1467,16 @@ public:
                 else if (cmd == "touch")
                     touch(arg);
                 else if (cmd == "cd")
-                    cd(arg);
+                {
+                    if (arg.find_first_not_of(' ') == string::npos)
+                    {
+                        cd("/");
+                    }
+                    else
+                    {
+                        cd(arg);
+                    }
+                }
                 else if (cmd == "rm")
                     rm(arg);
                 else if (cmd == "cat")
