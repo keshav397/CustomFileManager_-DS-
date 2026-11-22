@@ -6,8 +6,14 @@
 #include <sstream>
 #include <iomanip>
 #include <deque>
-#include <thread>//allowing the program to explicitly control its own execution state.
-#include <chrono>//allowing the compiler to understand exact time measurements like milliseconds.
+#include <thread> //allowing the program to explicitly control its own execution state.
+#include <chrono> //allowing the compiler to understand exact time measurements like milliseconds.
+#ifdef _WIN32
+#include <conio.h>
+#else
+#include <termios.h>
+#include <unistd.h>
+#endif
 using namespace std;
 
 struct Theme
@@ -46,6 +52,22 @@ void bootSequence()
 
     cout << "] 100%\n";
     cout << " Welcome to NanoFS.\n\n";
+}
+
+int getCharRaw()
+{
+#ifdef _WIN32
+    return _getch();
+#else
+    struct termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    int ch = getchar();
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    return ch;
+#endif
 }
 
 class FileNode
@@ -251,6 +273,102 @@ private:
             curr = curr->children[idx];
         }
         curr->isEndOfWord = true;
+    }
+
+    vector<string> autoCompleteMatches(const string &prefix)
+    {
+        vector<string> matches;
+        if (prefix.empty())
+        {
+            return matches;
+        }
+        TrieNode *tRoot = new TrieNode();
+        vector<string> commands = {
+            "mkdir", "touch", "ls", "cd", "pwd", "rm", "trash", "restore",
+            "write", "empty", "cat", "save", "load", "tree", "history",
+            "clear", "grep", "nanofetch", "shred", "find", "du",
+            "cp", "mv", "suggest", "exit", "props", "theme"};
+        for (const string &cmd : commands)
+            trieInsert(tRoot, cmd);
+        indexTreeIntoTrie(root, "/", tRoot);
+        TrieNode *curr = tRoot;
+        for (char c : prefix)
+        {
+            unsigned char idx = static_cast<unsigned char>(c);
+            if (idx >= 128 || curr->children[idx] == nullptr)
+            {
+                delete tRoot;
+                return matches;
+            }
+            curr = curr->children[idx];
+        }
+        trieCollectWords(curr, prefix, matches);
+        delete tRoot;
+        return matches;
+    }
+
+    string readInputWithTab(const string &prompt)
+    {
+        string input = "";
+        cout << prompt << flush;
+
+        while (true)
+        {
+            int ch = getCharRaw();
+            if (ch == '\r' || ch == '\n')
+            {
+                cout << '\n';
+                return input;
+            }
+            else if (ch == 8 || ch == 127)
+            {
+                if (!input.empty())
+                {
+                    input.pop_back();
+                    cout << "\b \b" << flush;
+                }
+            }
+            else if (ch == '\t')
+            {
+                size_t lastSpace = input.rfind(' ');
+                string lastWord = (lastSpace == string::npos) ? input : input.substr(lastSpace + 1);
+                vector<string> matches = autoCompleteMatches(lastWord);
+
+                if (matches.size() == 1)
+                {
+                    string completion = matches[0].substr(lastWord.size());
+                    input += completion;
+                    cout << completion << flush;
+                }
+                else if (matches.size() > 1)
+                {
+                    cout << '\n';
+                    for (const string &m : matches)
+                    {
+                        cout << currentTheme.fileColor << m << currentTheme.reset << "  ";
+                    }
+                    cout << '\n'
+                         << prompt << input << flush;
+                }
+            }
+#ifdef _WIN32
+            else if (ch == 0 || ch == 224)
+            {
+                getCharRaw();
+            }
+#else
+            else if (ch == 27)
+            {
+                getCharRaw();
+                getCharRaw();
+            }
+#endif
+            else if (ch >= 32 && ch <= 126)
+            {
+                input += static_cast<char>(ch);
+                cout << static_cast<char>(ch) << flush;
+            }
+        }
     }
 
     void countLinesAndWords(const string &text, int &lines, int &words)
@@ -1183,7 +1301,8 @@ public:
 
     void showThemes()
     {
-        cout << "\n" << currentTheme.accentColor << "Available Themes:" << currentTheme.reset << "\n";
+        cout << "\n"
+             << currentTheme.accentColor << "Available Themes:" << currentTheme.reset << "\n";
         for (auto const &p : themes)
         {
             Theme t = p.second;
@@ -1223,7 +1342,8 @@ public:
         pathFinder(target, fullPath);
 
         string border = "+--------------------------------------------------+";
-        cout << "\n" << currentTheme.accentColor << border << currentTheme.reset << "\n";
+        cout << "\n"
+             << currentTheme.accentColor << border << currentTheme.reset << "\n";
         cout << currentTheme.accentColor << "| PROPERTIES INSPECTOR" << currentTheme.reset << "\n";
         cout << currentTheme.accentColor << border << currentTheme.reset << "\n";
 
@@ -1277,8 +1397,8 @@ public:
         {
             string currentPath = "";
             pathFinder(currentDir, currentPath);
-            cout << currentTheme.promptColor << "user@nanofs:" << currentTheme.dirColor << currentPath << currentTheme.reset << "$ ";
-            getline(cin, input);
+            string prompt = currentTheme.promptColor + "user@nanofs:" + currentTheme.dirColor + currentPath + currentTheme.reset + "$ ";
+            input = readInputWithTab(prompt);
 
             if (input.empty())
                 continue;
